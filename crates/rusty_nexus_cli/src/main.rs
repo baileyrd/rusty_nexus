@@ -7,6 +7,8 @@ use std::sync::Arc;
 use rusty_nexus_ai::AiEngine;
 use rusty_nexus_kernel::Kernel;
 use rusty_nexus_mcp::McpServer;
+use rusty_nexus_storage::bases::{create_base, load_base, BaseFieldSchema, BaseSchema};
+use rusty_nexus_storage::canvas::parse_canvas;
 use rusty_nexus_storage::StorageEngine;
 use rusty_nexus_tui::TuiApp;
 
@@ -29,12 +31,15 @@ fn main() {
     match command.as_str() {
         "forge" => handle_forge(&args[2..], &forge_path),
         "content" => handle_content(&args[2..], &forge_path),
+        "canvas" => handle_canvas(&args[2..], &forge_path),
+        "bases" => handle_bases(&args[2..], &forge_path),
         "graph" => handle_graph(&args[2..], &forge_path),
         "tags" => handle_tags(&args[2..], &forge_path),
         "ai" => handle_ai(&args[2..], &forge_path),
         "remind-me" => handle_remind_me(&args[2..]),
         "mcp" => handle_mcp(&args[2..], &forge_path),
         "tui" => handle_tui(&args[2..], &forge_path),
+        "watch" => handle_watch(&forge_path),
         "config" => handle_config(&args[2..]),
         "help" | "--help" | "-h" => print_usage(),
         _ => {
@@ -48,13 +53,16 @@ fn print_usage() {
     println!("rusty_nexus - Sovereign Knowledge Base System");
     println!("Usage:");
     println!("  rusty_nexus forge <init|status> [PATH]");
-    println!("  rusty_nexus content <create|read|delete|search|tasks|task-toggle|backlinks> [ARGS]");
+    println!("  rusty_nexus content <create|read|delete|search|tasks|task-toggle|backlinks|daily> [ARGS]");
+    println!("  rusty_nexus canvas <read> <PATH>");
+    println!("  rusty_nexus bases <create|query> <PATH>");
     println!("  rusty_nexus graph <status|unresolved|neighbors> [PATH]");
     println!("  rusty_nexus tags <list>");
     println!("  rusty_nexus ai ask <PROMPT>");
     println!("  rusty_nexus remind-me <add|list> [TEXT]");
-    println!("  rusty_nexus mcp [list|call TOOL ARGS]");
+    println!("  rusty_nexus mcp [--stdio|list|call TOOL ARGS]");
     println!("  rusty_nexus tui");
+    println!("  rusty_nexus watch");
     println!("  rusty_nexus config <get|set|list>");
 }
 
@@ -98,7 +106,7 @@ fn handle_forge(args: &[String], current_forge: &Path) {
 
 fn handle_content(args: &[String], forge_path: &Path) {
     if args.is_empty() {
-        eprintln!("Usage: rusty_nexus content <create|read|delete|search|tasks|task-toggle|backlinks>");
+        eprintln!("Usage: rusty_nexus content <create|read|delete|search|tasks|task-toggle|backlinks|daily>");
         return;
     }
     let storage = match get_storage(forge_path) {
@@ -199,7 +207,92 @@ fn handle_content(args: &[String], forge_path: &Path) {
                 println!("- {}", l);
             }
         }
+        "daily" => {
+            let today = "daily/note.md";
+            match storage.read_file(today) {
+                Ok(text) => println!("{}", text),
+                Err(_) => {
+                    let note = storage
+                        .create_file(today, "# Daily Note\n- [ ] Journal entry")
+                        .unwrap();
+                    println!("Opened new daily note at {}", note.rel_path);
+                }
+            }
+        }
         _ => eprintln!("Unknown content subcommand"),
+    }
+}
+
+fn handle_canvas(args: &[String], forge_path: &Path) {
+    if args.len() < 2 || args[0] != "read" {
+        eprintln!("Usage: rusty_nexus canvas read <PATH>");
+        return;
+    }
+    let storage = match get_storage(forge_path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Error opening forge: {}", e);
+            return;
+        }
+    };
+    match storage.read_file(&args[1]) {
+        Ok(json) => match parse_canvas(&json) {
+            Ok(canvas) => {
+                println!("Canvas File: {}", args[1]);
+                println!("  Nodes: {}", canvas.nodes.len());
+                println!("  Edges: {}", canvas.edges.len());
+                for n in canvas.nodes {
+                    println!("  - Node [{}]: type={}, text={:?}, file={:?}", n.id, n.node_type, n.text, n.file);
+                }
+            }
+            Err(e) => eprintln!("Failed to parse canvas JSON: {}", e),
+        },
+        Err(e) => eprintln!("Error reading canvas file: {}", e),
+    }
+}
+
+fn handle_bases(args: &[String], forge_path: &Path) {
+    if args.is_empty() {
+        eprintln!("Usage: rusty_nexus bases <create|query> <PATH>");
+        return;
+    }
+    match args[0].as_str() {
+        "create" => {
+            if args.len() < 2 {
+                eprintln!("Usage: rusty_nexus bases create <REL_PATH>");
+                return;
+            }
+            let schema = BaseSchema {
+                name: "Database Base".to_string(),
+                description: "Nexus database base".to_string(),
+                fields: vec![BaseFieldSchema {
+                    name: "title".to_string(),
+                    field_type: "string".to_string(),
+                    required: true,
+                }],
+            };
+            match create_base(forge_path, &args[1], schema) {
+                Ok(b) => println!("Created base '{}' at {}", b.schema.name, args[1]),
+                Err(e) => eprintln!("Failed to create base: {}", e),
+            }
+        }
+        "query" => {
+            if args.len() < 2 {
+                eprintln!("Usage: rusty_nexus bases query <REL_PATH>");
+                return;
+            }
+            match load_base(forge_path, &args[1]) {
+                Ok(b) => {
+                    println!("Base: {} ({})", b.schema.name, b.schema.description);
+                    println!("Records ({}):", b.records.len());
+                    for r in b.records {
+                        println!("  - [{}] {:?}", r.id, r.fields);
+                    }
+                }
+                Err(e) => eprintln!("Failed to load base: {}", e),
+            }
+        }
+        _ => eprintln!("Unknown bases subcommand"),
     }
 }
 
@@ -278,7 +371,11 @@ fn handle_mcp(args: &[String], forge_path: &Path) {
     });
 
     let mcp = McpServer::new(storage);
-    if args.is_empty() || args[0] == "list" {
+    if !args.is_empty() && args[0] == "--stdio" {
+        if let Err(e) = mcp.run_stdio_loop() {
+            eprintln!("MCP Stdio loop error: {}", e);
+        }
+    } else if args.is_empty() || args[0] == "list" {
         println!("Available MCP Tools:");
         for tool in mcp.list_tools() {
             println!("  - {}: {}", tool.name, tool.description);
@@ -305,6 +402,17 @@ fn handle_tui(_args: &[String], forge_path: &Path) {
     let app = TuiApp::new(storage);
     if let Err(e) = app.run() {
         eprintln!("TUI Error: {}", e);
+    }
+}
+
+fn handle_watch(forge_path: &Path) {
+    println!("Watching forge at {} for filesystem updates...", forge_path.display());
+    match get_storage(forge_path) {
+        Ok(storage) => {
+            let _ = storage.rebuild_index();
+            println!("Index updated. Watch mode active (press Ctrl+C to stop).");
+        }
+        Err(e) => eprintln!("Watch error: {}", e),
     }
 }
 

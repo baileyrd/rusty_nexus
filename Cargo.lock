@@ -1222,6 +1222,7 @@ dependencies = [
  "rusty-search",
  "rusty-search-core",
  "rusty_err",
+ "rusty_json",
  "rusty_nexus_types",
  "rusty_regx",
  "rusty_sync",

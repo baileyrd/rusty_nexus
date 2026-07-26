@@ -7,6 +7,7 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 rusty_nexus_types = { workspace = true }
 rusty_regx = { workspace = true }
+rusty_json = { workspace = true }
 rusty-db = { workspace = true }
 rusty-db-sqlite = { workspace = true }
 rusty-db-core = { workspace = true }

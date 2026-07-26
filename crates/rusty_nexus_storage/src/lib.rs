@@ -1,6 +1,8 @@
 //! Nexus Storage Engine: Forge management, file reading/writing, markdown indexing,
 //! SQLite metadata database via `rusty-db`, search via `rusty-search`, and Knowledge Graph.
 
+pub mod bases;
+pub mod canvas;
 pub mod graph;
 pub mod parser;
 
@@ -8,6 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
+use canvas::parse_canvas;
 use graph::{GraphStats, KnowledgeGraph};
 use parser::parse_markdown;
 use rusty_nexus_types::{ForgeMetadata, NoteRecord, TaskRecord};
@@ -66,7 +69,7 @@ impl StorageEngine {
         &self.root_path
     }
 
-    /// Rebuild index by recursively scanning markdown files in the forge.
+    /// Rebuild index by recursively scanning markdown and canvas files in the forge.
     pub fn rebuild_index(&self) -> Result<(), String> {
         let mut g = self.graph.write().unwrap();
         *g = KnowledgeGraph::new();
@@ -89,14 +92,29 @@ impl StorageEngine {
 
             if path.is_dir() {
                 self.scan_dir(&path, g)?;
-            } else if path.extension().and_then(|s| s.to_str()) == Some("md") {
-                if let Ok(rel_path) = path.strip_prefix(&self.root_path) {
-                    let rel_str = rel_path.to_string_lossy().replace('\\', "/");
-                    if let Ok(content) = fs::read_to_string(&path) {
-                        let parsed = parse_markdown(&rel_str, &content);
-                        g.add_node(rel_str.clone(), parsed.title, "note".to_string());
-                        for link in parsed.links {
-                            g.add_edge(rel_str.clone(), link.target_path);
+            } else {
+                let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+                if ext == "md" {
+                    if let Ok(rel_path) = path.strip_prefix(&self.root_path) {
+                        let rel_str = rel_path.to_string_lossy().replace('\\', "/");
+                        if let Ok(content) = fs::read_to_string(&path) {
+                            let parsed = parse_markdown(&rel_str, &content);
+                            g.add_node(rel_str.clone(), parsed.title, "note".to_string());
+                            for link in parsed.links {
+                                g.add_edge(rel_str.clone(), link.target_path);
+                            }
+                        }
+                    }
+                } else if ext == "canvas" {
+                    if let Ok(rel_path) = path.strip_prefix(&self.root_path) {
+                        let rel_str = rel_path.to_string_lossy().replace('\\', "/");
+                        if let Ok(content) = fs::read_to_string(&path) {
+                            if let Ok(canvas) = parse_canvas(&content) {
+                                g.add_node(rel_str.clone(), rel_str.clone(), "canvas".to_string());
+                                for target in canvas.extract_file_links() {
+                                    g.add_edge(rel_str.clone(), target);
+                                }
+                            }
                         }
                     }
                 }
