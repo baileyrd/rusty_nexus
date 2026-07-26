@@ -2,6 +2,7 @@
 //!
 //! Provides the central event bus, capability verification, path security validation, and IPC message dispatching.
 
+pub mod crdt;
 pub mod notification;
 pub mod plugin;
 pub mod security;

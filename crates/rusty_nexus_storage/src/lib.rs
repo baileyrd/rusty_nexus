@@ -7,7 +7,9 @@ pub mod export;
 pub mod frontmatter;
 pub mod git;
 pub mod graph;
+pub mod link_rewrite;
 pub mod parser;
+pub mod trash;
 pub mod watcher;
 
 use std::fs;

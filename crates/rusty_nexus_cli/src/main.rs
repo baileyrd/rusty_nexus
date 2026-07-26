@@ -1,3 +1,4 @@
+pub mod bench;
 pub mod repl;
 pub mod snippets;
 
@@ -5,6 +6,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use bench::run_benchmarks;
 use repl::run_repl;
 use rusty_nexus_ai::AiEngine;
 use rusty_nexus_kernel::plugin::PluginManager;
@@ -18,6 +20,8 @@ use rusty_nexus_storage::canvas::parse_canvas;
 use rusty_nexus_storage::export::export_forge_html;
 use rusty_nexus_storage::frontmatter::parse_frontmatter;
 use rusty_nexus_storage::git::{get_git_log, get_git_status};
+use rusty_nexus_storage::link_rewrite::rewrite_wikilinks;
+use rusty_nexus_storage::trash::{list_trash, restore_from_trash};
 use rusty_nexus_storage::StorageEngine;
 use rusty_nexus_tui::theme::ThemeManager;
 use rusty_nexus_tui::TuiApp;
@@ -59,6 +63,7 @@ fn main() {
         "mcp" => handle_mcp(&args[2..], &forge_path),
         "tui" => handle_tui(&args[2..], &forge_path),
         "repl" | "shell" => handle_repl(&forge_path),
+        "bench" => handle_bench(&forge_path),
         "watch" => handle_watch(&forge_path),
         "config" => handle_config(&args[2..]),
         "help" | "--help" | "-h" => print_usage(),
@@ -73,7 +78,7 @@ fn print_usage() {
     println!("rusty_nexus - Sovereign Knowledge Base System");
     println!("Usage:");
     println!("  rusty_nexus forge <init|status> [PATH]");
-    println!("  rusty_nexus content <create|read|delete|search|tasks|task-toggle|backlinks|daily|frontmatter> [ARGS]");
+    println!("  rusty_nexus content <create|read|delete|rename|trash-list|restore|search|tasks|task-toggle|backlinks|daily|frontmatter> [ARGS]");
     println!("  rusty_nexus canvas <read> <PATH>");
     println!("  rusty_nexus bases <create|query> <PATH>");
     println!("  rusty_nexus graph <status|unresolved|neighbors> [PATH]");
@@ -88,6 +93,7 @@ fn print_usage() {
     println!("  rusty_nexus mcp [--stdio|list|call TOOL ARGS]");
     println!("  rusty_nexus tui");
     println!("  rusty_nexus repl");
+    println!("  rusty_nexus bench");
     println!("  rusty_nexus watch");
     println!("  rusty_nexus config <get|set|list>");
 }
@@ -248,6 +254,42 @@ fn handle_content(args: &[String], forge_path: &Path) {
                         .unwrap();
                     println!("Opened new daily note at {}", note.rel_path);
                 }
+            }
+        }
+        "rename" => {
+            if args.len() < 3 {
+                eprintln!("Usage: rusty_nexus content rename <OLD_PATH> <NEW_PATH>");
+                return;
+            }
+            match storage.read_file(&args[1]) {
+                Ok(content) => {
+                    let _ = storage.create_file(&args[2], &content);
+                    let _ = storage.delete_file(&args[1]);
+                    match rewrite_wikilinks(&storage, &args[1], &args[2]) {
+                        Ok(count) => println!("Renamed note to '{}' and updated {} wikilinks", args[2], count),
+                        Err(e) => eprintln!("Link rewrite error: {}", e),
+                    }
+                }
+                Err(e) => eprintln!("Read error: {}", e),
+            }
+        }
+        "trash-list" => match list_trash(storage.root_path()) {
+            Ok(items) => {
+                println!("Trashed items ({}):", items.len());
+                for it in items {
+                    println!("  - {}", it);
+                }
+            }
+            Err(e) => eprintln!("Trash list error: {}", e),
+        },
+        "restore" => {
+            if args.len() < 2 {
+                eprintln!("Usage: rusty_nexus content restore <PATH>");
+                return;
+            }
+            match restore_from_trash(storage.root_path(), &args[1]) {
+                Ok(_) => println!("Restored note '{}' from trash", args[1]),
+                Err(e) => eprintln!("Restore error: {}", e),
             }
         }
         "frontmatter" => {
@@ -578,6 +620,23 @@ fn handle_term(args: &[String]) {
         for s in manager.list_snippets() {
             println!("  - {}: '{}' ({})", s.name, s.command, s.description);
         }
+    }
+}
+
+fn handle_bench(forge_path: &Path) {
+    println!("Running rusty_nexus performance benchmark suite...");
+    match get_storage(forge_path) {
+        Ok(storage) => {
+            let results = run_benchmarks(&storage);
+            println!("\x1b[1;32mBenchmark Results:\x1b[0m");
+            for r in results {
+                println!(
+                    "  - {:<28}: {:>10.2} ops/sec ({:.2} ms for {} iters)",
+                    r.name, r.ops_per_sec, r.total_duration_ms, r.iterations
+                );
+            }
+        }
+        Err(e) => eprintln!("Benchmark storage error: {}", e),
     }
 }
 
