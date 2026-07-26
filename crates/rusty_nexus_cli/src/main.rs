@@ -1,15 +1,23 @@
 //! Headless CLI Driver (`rusty_nexus` / `nexus`) for the Nexus Knowledge Base System.
 
+pub mod repl;
+
 use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use repl::run_repl;
 use rusty_nexus_ai::AiEngine;
+use rusty_nexus_kernel::plugin::PluginManager;
+use rusty_nexus_kernel::security::{AuditLogger, ForgePathValidator};
 use rusty_nexus_kernel::Kernel;
+use rusty_nexus_mcp::remind_sync::sync_tasks_to_reminders;
 use rusty_nexus_mcp::McpServer;
 use rusty_nexus_storage::bases::{create_base, load_base, BaseFieldSchema, BaseSchema};
 use rusty_nexus_storage::canvas::parse_canvas;
+use rusty_nexus_storage::export::export_forge_html;
 use rusty_nexus_storage::StorageEngine;
+use rusty_nexus_tui::theme::ThemeManager;
 use rusty_nexus_tui::TuiApp;
 
 fn main() {
@@ -27,6 +35,9 @@ fn main() {
     kernel.grant_capability("cli", "storage_read");
     kernel.grant_capability("cli", "storage_write");
 
+    let logger = AuditLogger::new(&forge_path);
+    logger.log_action("cli_exec", &args[1], "ok");
+
     let command = &args[1];
     match command.as_str() {
         "forge" => handle_forge(&args[2..], &forge_path),
@@ -36,9 +47,12 @@ fn main() {
         "graph" => handle_graph(&args[2..], &forge_path),
         "tags" => handle_tags(&args[2..], &forge_path),
         "ai" => handle_ai(&args[2..], &forge_path),
-        "remind-me" => handle_remind_me(&args[2..]),
+        "remind-me" => handle_remind_me(&args[2..], &forge_path),
+        "plugin" => handle_plugin(&args[2..]),
+        "export" => handle_export(&args[2..], &forge_path),
         "mcp" => handle_mcp(&args[2..], &forge_path),
         "tui" => handle_tui(&args[2..], &forge_path),
+        "repl" | "shell" => handle_repl(&forge_path),
         "watch" => handle_watch(&forge_path),
         "config" => handle_config(&args[2..]),
         "help" | "--help" | "-h" => print_usage(),
@@ -58,10 +72,13 @@ fn print_usage() {
     println!("  rusty_nexus bases <create|query> <PATH>");
     println!("  rusty_nexus graph <status|unresolved|neighbors> [PATH]");
     println!("  rusty_nexus tags <list>");
-    println!("  rusty_nexus ai ask <PROMPT>");
-    println!("  rusty_nexus remind-me <add|list> [TEXT]");
+    println!("  rusty_nexus ai <ask|embed|rag> [PROMPT]");
+    println!("  rusty_nexus remind-me <add|list|sync> [TEXT]");
+    println!("  rusty_nexus plugin <list|enable|disable> [ID]");
+    println!("  rusty_nexus export <OUTPUT_DIR>");
     println!("  rusty_nexus mcp [--stdio|list|call TOOL ARGS]");
     println!("  rusty_nexus tui");
+    println!("  rusty_nexus repl");
     println!("  rusty_nexus watch");
     println!("  rusty_nexus config <get|set|list>");
 }
@@ -109,6 +126,7 @@ fn handle_content(args: &[String], forge_path: &Path) {
         eprintln!("Usage: rusty_nexus content <create|read|delete|search|tasks|task-toggle|backlinks|daily>");
         return;
     }
+    let validator = ForgePathValidator::new(forge_path);
     let storage = match get_storage(forge_path) {
         Ok(s) => s,
         Err(e) => {
@@ -124,6 +142,10 @@ fn handle_content(args: &[String], forge_path: &Path) {
                 return;
             }
             let file_rel = &args[1];
+            if let Err(err) = validator.validate_path(file_rel) {
+                eprintln!("Security error: {}", err);
+                return;
+            }
             let content = if args.len() >= 4 && args[2] == "--content" {
                 &args[3]
             } else if args.len() >= 3 {
@@ -328,7 +350,8 @@ fn handle_graph(args: &[String], forge_path: &Path) {
 }
 
 fn handle_tags(_args: &[String], _forge_path: &Path) {
-    println!("Tags list: (tags active in forge)");
+    let theme = ThemeManager::get_theme("dark");
+    println!("{}", theme.apply_primary("Tags list: (active forge tags)"));
 }
 
 fn handle_ai(args: &[String], forge_path: &Path) {
@@ -378,7 +401,7 @@ fn handle_ai(args: &[String], forge_path: &Path) {
     }
 }
 
-fn handle_remind_me(args: &[String]) {
+fn handle_remind_me(args: &[String], forge_path: &Path) {
     if args.is_empty() {
         println!("RemindMe integration ready.");
         return;
@@ -386,7 +409,50 @@ fn handle_remind_me(args: &[String]) {
     match args[0].as_str() {
         "add" => println!("Reminder added: {}", args[1..].join(" ")),
         "list" => println!("Reminders: [Sample reminder]"),
+        "sync" => match get_storage(forge_path) {
+            Ok(storage) => match sync_tasks_to_reminders(&storage) {
+                Ok(count) => println!("Synchronized {} tasks into RemindMe", count),
+                Err(e) => eprintln!("Sync error: {}", e),
+            },
+            Err(e) => eprintln!("Forge error: {}", e),
+        },
         _ => println!("Unknown remind-me command"),
+    }
+}
+
+fn handle_plugin(args: &[String]) {
+    let manager = PluginManager::new();
+    if args.is_empty() || args[0] == "list" {
+        println!("Registered Plugins:");
+        for p in manager.list_plugins() {
+            let status = if p.enabled { "enabled" } else { "disabled" };
+            println!("  - {} (v{}) [{}] - {}", p.name, p.version, status, p.description);
+        }
+    } else if args[0] == "enable" && args.len() >= 2 {
+        let _ = manager.enable_plugin(&args[1]);
+        println!("Plugin '{}' enabled", args[1]);
+    } else if args[0] == "disable" && args.len() >= 2 {
+        let _ = manager.disable_plugin(&args[1]);
+        println!("Plugin '{}' disabled", args[1]);
+    }
+}
+
+fn handle_export(args: &[String], forge_path: &Path) {
+    if args.is_empty() {
+        eprintln!("Usage: rusty_nexus export <OUTPUT_DIR>");
+        return;
+    }
+    let storage = match get_storage(forge_path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Forge error: {}", e);
+            return;
+        }
+    };
+    let out_dir = PathBuf::from(&args[0]);
+    match export_forge_html(&storage, &out_dir) {
+        Ok(count) => println!("Exported {} notes to HTML bundle at {}", count, out_dir.display()),
+        Err(e) => eprintln!("Export error: {}", e),
     }
 }
 
@@ -431,6 +497,20 @@ fn handle_tui(_args: &[String], forge_path: &Path) {
     let app = TuiApp::new(storage);
     if let Err(e) = app.run() {
         eprintln!("TUI Error: {}", e);
+    }
+}
+
+fn handle_repl(forge_path: &Path) {
+    let storage = Arc::new(match get_storage(forge_path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Error opening forge: {}", e);
+            return;
+        }
+    });
+
+    if let Err(e) = run_repl(storage) {
+        eprintln!("REPL Error: {}", e);
     }
 }
 

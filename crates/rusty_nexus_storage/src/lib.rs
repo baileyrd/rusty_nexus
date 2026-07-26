@@ -3,6 +3,7 @@
 
 pub mod bases;
 pub mod canvas;
+pub mod export;
 pub mod graph;
 pub mod parser;
 pub mod watcher;

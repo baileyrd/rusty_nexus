@@ -3,6 +3,7 @@
 //! Serves standard `nexus_*` tools and embeds `remind_me_*` tools over stdio JSON-RPC 2.0.
 
 pub mod protocol;
+pub mod remind_sync;
 
 use std::io::{self, BufRead, Write};
 use std::sync::Arc;

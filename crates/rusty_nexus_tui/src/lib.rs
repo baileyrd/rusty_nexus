@@ -2,6 +2,8 @@
 //!
 //! Renders interactive dashboard using `rusty_term`, `rusty_lines`, and `rusty_ansi`.
 
+pub mod theme;
+
 use std::sync::Arc;
 use rusty_nexus_storage::StorageEngine;
 
