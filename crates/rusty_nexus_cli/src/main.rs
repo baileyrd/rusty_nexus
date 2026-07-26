@@ -333,19 +333,48 @@ fn handle_tags(_args: &[String], _forge_path: &Path) {
 
 fn handle_ai(args: &[String], forge_path: &Path) {
     if args.is_empty() {
-        eprintln!("Usage: rusty_nexus ai ask <PROMPT>");
+        eprintln!("Usage: rusty_nexus ai <ask|embed|rag> [PROMPT]");
         return;
     }
     let ai = AiEngine::new("llama");
     let storage = get_storage(forge_path).ok();
-    if args[0] == "ask" && args.len() > 1 {
-        let prompt = args[1..].join(" ");
-        match ai.ask(&prompt, storage.as_ref()) {
-            Ok(ans) => println!("{}", ans),
-            Err(e) => eprintln!("AI error: {}", e),
+    match args[0].as_str() {
+        "ask" => {
+            if args.len() > 1 {
+                let prompt = args[1..].join(" ");
+                match ai.ask(&prompt, storage.as_ref()) {
+                    Ok(ans) => println!("{}", ans),
+                    Err(e) => eprintln!("AI error: {}", e),
+                }
+            } else {
+                eprintln!("Usage: rusty_nexus ai ask <PROMPT>");
+            }
         }
-    } else {
-        println!("AI status: Ready ({})", ai.provider_name());
+        "embed" => {
+            if args.len() > 1 {
+                let text = args[1..].join(" ");
+                let vec = ai.embed(&text);
+                println!("Vector Embedding (dim {}): {:?}", vec.len(), vec);
+            } else {
+                eprintln!("Usage: rusty_nexus ai embed <TEXT>");
+            }
+        }
+        "rag" => {
+            if args.len() > 1 {
+                let query = args[1..].join(" ");
+                if let Some(st) = storage {
+                    match ai.vector_rag(&query, &st) {
+                        Ok(res) => println!("{}", res),
+                        Err(e) => eprintln!("RAG error: {}", e),
+                    }
+                } else {
+                    eprintln!("Forge storage required for RAG query");
+                }
+            } else {
+                eprintln!("Usage: rusty_nexus ai rag <QUERY>");
+            }
+        }
+        _ => println!("AI status: Ready ({})", ai.provider_name()),
     }
 }
 

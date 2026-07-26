@@ -1,6 +1,8 @@
 //! Microkernel for `rusty_nexus`.
 //!
-//! Provides the central event bus, capability verification, and IPC message dispatching.
+//! Provides the central event bus, capability verification, path security validation, and IPC message dispatching.
+
+pub mod security;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

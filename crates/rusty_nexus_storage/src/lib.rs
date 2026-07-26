@@ -5,6 +5,7 @@ pub mod bases;
 pub mod canvas;
 pub mod graph;
 pub mod parser;
+pub mod watcher;
 
 use std::fs;
 use std::path::{Path, PathBuf};
