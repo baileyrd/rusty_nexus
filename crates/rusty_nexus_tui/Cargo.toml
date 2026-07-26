@@ -1,0 +1,14 @@
+[package]
+name = "rusty_nexus_tui"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+rusty_nexus_types = { workspace = true }
+rusty_nexus_storage = { workspace = true }
+rusty_term = { workspace = true }
+rusty_lines = { workspace = true }
+rusty_ansi = { workspace = true }
+rusty_sync = { workspace = true }
+rusty_err = { workspace = true }

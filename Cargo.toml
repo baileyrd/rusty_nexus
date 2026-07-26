@@ -1,0 +1,55 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/rusty_nexus_types",
+    "crates/rusty_nexus_kernel",
+    "crates/rusty_nexus_storage",
+    "crates/rusty_nexus_ai",
+    "crates/rusty_nexus_mcp",
+    "crates/rusty_nexus_tui",
+    "crates/rusty_nexus_cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+# Internal crates
+rusty_nexus_types = { path = "crates/rusty_nexus_types" }
+rusty_nexus_kernel = { path = "crates/rusty_nexus_kernel" }
+rusty_nexus_storage = { path = "crates/rusty_nexus_storage" }
+rusty_nexus_ai = { path = "crates/rusty_nexus_ai" }
+rusty_nexus_mcp = { path = "crates/rusty_nexus_mcp" }
+rusty_nexus_tui = { path = "crates/rusty_nexus_tui" }
+
+# Sovereign Rusty Mill dependencies
+rusty_tokio = { path = "../rusty_tokio" }
+rusty-db = { path = "../rusty_db/rusty_db" }
+rusty-db-sqlite = { path = "../rusty_db/crates/rusty-db-sqlite" }
+rusty-db-core = { path = "../rusty_db/crates/rusty-db-core" }
+rusty-search = { path = "../rusty_search/crates/rusty-search" }
+rusty-search-core = { path = "../rusty_search/crates/rusty-search-core" }
+rusty_http = { path = "../rusty_http" }
+rusty_request = { path = "../rusty_request" }
+rusty_json = { path = "../rusty_json" }
+rusty_config = { path = "../rusty_config" }
+rusty_lines = { path = "../rusty_lines" }
+rusty_term = { path = "../rusty_term" }
+rusty_ansi = { path = "../rusty_ansi" }
+rp-core = { path = "../rusty_provider/crates/core" }
+rusty_regx = { path = "../rusty_regx" }
+rusty_time = { path = "../rusty_time" }
+rusty_std = { path = "../rusty_std" }
+rusty_sync = { path = "../rusty_sync" }
+rusty_err = { path = "../rusty_err" }
+
+# Sovereign remind_me dependencies
+remind_me_core = { path = "../../rusty_remind_me/crates/remind_me_core" }
+remind_me_mcp = { path = "../../rusty_remind_me/crates/remind_me_mcp" }
+remind_me_api = { path = "../../rusty_remind_me/crates/remind_me_api" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"

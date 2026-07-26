@@ -1,0 +1,23 @@
+[package]
+name = "rusty_nexus_cli"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "rusty_nexus"
+path = "src/main.rs"
+
+[dependencies]
+rusty_nexus_types = { workspace = true }
+rusty_nexus_kernel = { workspace = true }
+rusty_nexus_storage = { workspace = true }
+rusty_nexus_ai = { workspace = true }
+rusty_nexus_mcp = { workspace = true }
+rusty_nexus_tui = { workspace = true }
+remind_me_core = { workspace = true }
+rusty_config = { workspace = true }
+rusty_lines = { workspace = true }
+rusty_term = { workspace = true }
+rusty_tokio = { workspace = true }
+rusty_err = { workspace = true }

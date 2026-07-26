@@ -1,0 +1,17 @@
+[package]
+name = "rusty_nexus_storage"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+rusty_nexus_types = { workspace = true }
+rusty_regx = { workspace = true }
+rusty-db = { workspace = true }
+rusty-db-sqlite = { workspace = true }
+rusty-db-core = { workspace = true }
+rusty-search = { workspace = true }
+rusty-search-core = { workspace = true }
+rusty_sync = { workspace = true }
+rusty_time = { workspace = true }
+rusty_err = { workspace = true }
