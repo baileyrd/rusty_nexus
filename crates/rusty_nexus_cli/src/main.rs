@@ -1,6 +1,5 @@
-//! Headless CLI Driver (`rusty_nexus` / `nexus`) for the Nexus Knowledge Base System.
-
 pub mod repl;
+pub mod snippets;
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -10,15 +9,19 @@ use repl::run_repl;
 use rusty_nexus_ai::AiEngine;
 use rusty_nexus_kernel::plugin::PluginManager;
 use rusty_nexus_kernel::security::{AuditLogger, ForgePathValidator};
+use rusty_nexus_kernel::workflow::WorkflowEngine;
 use rusty_nexus_kernel::Kernel;
 use rusty_nexus_mcp::remind_sync::sync_tasks_to_reminders;
 use rusty_nexus_mcp::McpServer;
 use rusty_nexus_storage::bases::{create_base, load_base, BaseFieldSchema, BaseSchema};
 use rusty_nexus_storage::canvas::parse_canvas;
 use rusty_nexus_storage::export::export_forge_html;
+use rusty_nexus_storage::frontmatter::parse_frontmatter;
+use rusty_nexus_storage::git::{get_git_log, get_git_status};
 use rusty_nexus_storage::StorageEngine;
 use rusty_nexus_tui::theme::ThemeManager;
 use rusty_nexus_tui::TuiApp;
+use snippets::SnippetManager;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -46,6 +49,9 @@ fn main() {
         "bases" => handle_bases(&args[2..], &forge_path),
         "graph" => handle_graph(&args[2..], &forge_path),
         "tags" => handle_tags(&args[2..], &forge_path),
+        "git" => handle_git(&args[2..], &forge_path),
+        "term" => handle_term(&args[2..]),
+        "workflow" => handle_workflow(&args[2..], &forge_path),
         "ai" => handle_ai(&args[2..], &forge_path),
         "remind-me" => handle_remind_me(&args[2..], &forge_path),
         "plugin" => handle_plugin(&args[2..]),
@@ -67,10 +73,13 @@ fn print_usage() {
     println!("rusty_nexus - Sovereign Knowledge Base System");
     println!("Usage:");
     println!("  rusty_nexus forge <init|status> [PATH]");
-    println!("  rusty_nexus content <create|read|delete|search|tasks|task-toggle|backlinks|daily> [ARGS]");
+    println!("  rusty_nexus content <create|read|delete|search|tasks|task-toggle|backlinks|daily|frontmatter> [ARGS]");
     println!("  rusty_nexus canvas <read> <PATH>");
     println!("  rusty_nexus bases <create|query> <PATH>");
     println!("  rusty_nexus graph <status|unresolved|neighbors> [PATH]");
+    println!("  rusty_nexus git <status|log> [PATH]");
+    println!("  rusty_nexus term <saved>");
+    println!("  rusty_nexus workflow <run> <FILE>");
     println!("  rusty_nexus tags <list>");
     println!("  rusty_nexus ai <ask|embed|rag> [PROMPT]");
     println!("  rusty_nexus remind-me <add|list|sync> [TEXT]");
@@ -239,6 +248,19 @@ fn handle_content(args: &[String], forge_path: &Path) {
                         .unwrap();
                     println!("Opened new daily note at {}", note.rel_path);
                 }
+            }
+        }
+        "frontmatter" => {
+            if args.len() < 2 {
+                eprintln!("Usage: rusty_nexus content frontmatter <PATH>");
+                return;
+            }
+            match storage.read_file(&args[1]) {
+                Ok(text) => {
+                    let fm = parse_frontmatter(&text);
+                    println!("Frontmatter metadata ({} items): {:?}", fm.metadata.len(), fm.metadata);
+                }
+                Err(e) => eprintln!("Read error: {}", e),
             }
         }
         _ => eprintln!("Unknown content subcommand"),
@@ -525,6 +547,59 @@ fn handle_watch(forge_path: &Path) {
     }
 }
 
+fn handle_git(args: &[String], forge_path: &Path) {
+    if args.is_empty() || args[0] == "status" {
+        match get_git_status(forge_path) {
+            Ok(st) => {
+                println!("Git Branch: {}", st.branch);
+                println!("Is Clean: {}", st.is_clean);
+                println!("Modified Files: {}", st.modified_count);
+                println!("Untracked Files: {}", st.untracked_count);
+            }
+            Err(e) => eprintln!("Git error: {}", e),
+        }
+    } else if args[0] == "log" {
+        match get_git_log(forge_path, 5) {
+            Ok(logs) => {
+                println!("Recent Commits ({}):", logs.len());
+                for l in logs {
+                    println!("  {}", l);
+                }
+            }
+            Err(e) => eprintln!("Git log error: {}", e),
+        }
+    }
+}
+
+fn handle_term(args: &[String]) {
+    let manager = SnippetManager::new();
+    if args.is_empty() || args[0] == "saved" {
+        println!("Saved Terminal Snippets:");
+        for s in manager.list_snippets() {
+            println!("  - {}: '{}' ({})", s.name, s.command, s.description);
+        }
+    }
+}
+
 fn handle_config(_args: &[String]) {
     println!("Nexus Config: default Settings loaded.");
+}
+
+fn handle_workflow(args: &[String], _forge_path: &Path) {
+    if args.len() < 2 || args[0] != "run" {
+        eprintln!("Usage: rusty_nexus workflow run <FILE>");
+        return;
+    }
+    match std::fs::read_to_string(&args[1]) {
+        Ok(content) => {
+            let steps = WorkflowEngine::parse_workflow(&content);
+            println!("Parsed {} workflow steps from {}", steps.len(), args[1]);
+            let report = WorkflowEngine::run_steps(&steps);
+            println!("Executed {}/{} steps successfully.", report.successful_steps, report.total_steps);
+            for log in report.logs {
+                println!("  - {}", log);
+            }
+        }
+        Err(e) => eprintln!("Failed to read workflow file: {}", e),
+    }
 }

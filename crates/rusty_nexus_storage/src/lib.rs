@@ -4,6 +4,8 @@
 pub mod bases;
 pub mod canvas;
 pub mod export;
+pub mod frontmatter;
+pub mod git;
 pub mod graph;
 pub mod parser;
 pub mod watcher;
