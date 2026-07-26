@@ -2,6 +2,7 @@
 //!
 //! Serves standard `nexus_*` tools and embeds `remind_me_*` tools over stdio JSON-RPC 2.0.
 
+pub mod http_server;
 pub mod protocol;
 pub mod remind_sync;
 

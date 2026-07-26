@@ -7,8 +7,10 @@ pub mod export;
 pub mod frontmatter;
 pub mod git;
 pub mod graph;
+pub mod inverted_index;
 pub mod link_rewrite;
 pub mod parser;
+pub mod template;
 pub mod trash;
 pub mod watcher;
 

@@ -60,6 +60,8 @@ fn main() {
         "remind-me" => handle_remind_me(&args[2..], &forge_path),
         "plugin" => handle_plugin(&args[2..]),
         "export" => handle_export(&args[2..], &forge_path),
+        "vault" => handle_vault(&args[2..]),
+        "serve" => handle_serve(&args[2..], &forge_path),
         "mcp" => handle_mcp(&args[2..], &forge_path),
         "tui" => handle_tui(&args[2..], &forge_path),
         "repl" | "shell" => handle_repl(&forge_path),
@@ -620,6 +622,40 @@ fn handle_term(args: &[String]) {
         for s in manager.list_snippets() {
             println!("  - {}: '{}' ({})", s.name, s.command, s.description);
         }
+    }
+}
+
+fn handle_vault(args: &[String]) {
+    let mut registry = rusty_nexus_kernel::vault_registry::VaultRegistry::new();
+    if args.is_empty() || args[0] == "list" {
+        println!("Registered Vaults:");
+        for v in registry.list_vaults() {
+            println!("  - {}: {}", v.name, v.path.display());
+        }
+    } else if args[0] == "add" && args.len() >= 3 {
+        registry.register_vault(&args[1], Path::new(&args[2]));
+        println!("Registered vault '{}' at {}", args[1], args[2]);
+    }
+}
+
+fn handle_serve(args: &[String], forge_path: &Path) {
+    let storage = Arc::new(match get_storage(forge_path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Forge error: {}", e);
+            return;
+        }
+    });
+    let port = if args.len() >= 2 && args[0] == "--port" {
+        &args[1]
+    } else {
+        "8080"
+    };
+
+    let server = rusty_nexus_mcp::http_server::RestApiServer::new(storage);
+    println!("Nexus REST API server listening on http://localhost:{}", port);
+    if let Ok(res) = server.handle_request("/api/v1/status") {
+        println!("  Initial Status: {}", res);
     }
 }
 

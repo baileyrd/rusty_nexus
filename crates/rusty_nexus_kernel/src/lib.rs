@@ -6,6 +6,7 @@ pub mod crdt;
 pub mod notification;
 pub mod plugin;
 pub mod security;
+pub mod vault_registry;
 pub mod workflow;
 
 use std::collections::HashMap;
